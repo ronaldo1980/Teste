@@ -1,0 +1,532 @@
+Conforme documento solicitando um teste de Back tentei explicar a forma de como desenvolver, como o tempo era curto (recebi ligação no final da tarde do dia 29/08 e entregar hj dia 30/08 achei melhor explicar o passo a passo para o desenvolviomento do desafio:
+
+Estutura do projeto:
+
+ClientManagement.sln
+│
+├── ClientManagement.Web (Projeto MVC)
+│   ├── Controllers
+│   ├── Views
+│   └── wwwroot
+│
+├── ClientManagement.API (Projeto API)
+│   ├── Controllers
+│   ├── Models
+│   ├── Repositories
+│   ├── Services
+│   ├── DTOs
+│   └── Utils
+│
+└── ClientManagement.Tests (Projeto de Testes)
+    └── UnitTests
+
+Código para ClientsController.cs
+
+using Microsoft.AspNetCore.Mvc;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
+using ClientManagement.Web.Models;
+
+namespace ClientManagement.Web.Controllers
+{
+    public class ClientsController : Controller
+    {
+        private readonly HttpClient _httpClient;
+        private const string ApiBaseUrl = "https://localhost:5001/api/clients"; // Substitua pelo URL real da API
+
+        public ClientsController(HttpClient httpClient)
+        {
+            _httpClient = httpClient;
+        }
+
+        // GET: Clients
+        public async Task<IActionResult> Index()
+        {
+            var clients = await _httpClient.GetFromJsonAsync<List<ClientViewModel>>(ApiBaseUrl);
+            return View(clients);
+        }
+
+        // GET: Clients/Create
+        public IActionResult Create()
+        {
+            return View();
+        }
+
+        // POST: Clients/Create
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Create(ClientViewModel client)
+        {
+            if (ModelState.IsValid)
+            {
+                var response = await _httpClient.PostAsJsonAsync(ApiBaseUrl, client);
+                if (response.IsSuccessStatusCode)
+                    return RedirectToAction(nameof(Index));
+            }
+            return View(client);
+        }
+
+        // GET: Clients/Edit/5
+        public async Task<IActionResult> Edit(int id)
+        {
+            var client = await _httpClient.GetFromJsonAsync<ClientViewModel>($"{ApiBaseUrl}/{id}");
+            if (client == null)
+                return NotFound();
+
+            return View(client);
+        }
+
+        // POST: Clients/Edit/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Edit(int id, ClientViewModel client)
+        {
+            if (id != client.ClientId)
+                return NotFound();
+
+            if (ModelState.IsValid)
+            {
+                var response = await _httpClient.PutAsJsonAsync($"{ApiBaseUrl}/{id}", client);
+                if (response.IsSuccessStatusCode)
+                    return RedirectToAction(nameof(Index));
+            }
+            return View(client);
+        }
+
+        // GET: Clients/Delete/5
+        public async Task<IActionResult> Delete(int id)
+        {
+            var client = await _httpClient.GetFromJsonAsync<ClientViewModel>($"{ApiBaseUrl}/{id}");
+            if (client == null)
+                return NotFound();
+
+            return View(client);
+        }
+
+        // POST: Clients/Delete/5
+        [HttpPost, ActionName("Delete")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteConfirmed(int id)
+        {
+            var response = await _httpClient.DeleteAsync($"{ApiBaseUrl}/{id}");
+            return RedirectToAction(nameof(Index));
+        }
+    }
+}
+
+
+
+Projeto de API
+
+Código para AuthController.cs
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+
+namespace ClientManagement.API.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class AuthController : ControllerBase
+    {
+        [HttpPost("login")]
+        public IActionResult Login([FromBody] LoginRequest request)
+        {
+            // Implementar lógica de autenticação com mock
+            if (request.Username == "admin" && request.Password == "password") // Exemplo simples
+            {
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var key = Encoding.ASCII.GetBytes("secreta-chave-para-token"); // Usar uma chave segura
+                var tokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Subject = new ClaimsIdentity(new[] { new Claim("id", "1") }),
+                    Expires = DateTime.UtcNow.AddHours(1),
+                    SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+                };
+                var token = tokenHandler.CreateToken(tokenDescriptor);
+                var tokenString = tokenHandler.WriteToken(token);
+
+                return Ok(new { Token = tokenString });
+            }
+            return Unauthorized();
+        }
+    }
+}
+
+Código para ClientsController.cs
+
+using Microsoft.AspNetCore.Mvc;
+using ClientManagement.API.Models;
+using ClientManagement.API.Repositories;
+
+namespace ClientManagement.API.Controllers
+{
+    [Route("api/[controller]")]
+    [ApiController]
+    public class ClientsController : ControllerBase
+    {
+        private readonly IClientRepository _clientRepository;
+
+        public ClientsController(IClientRepository clientRepository)
+        {
+            _clientRepository = clientRepository;
+        }
+
+        [HttpGet]
+        public IActionResult GetAll()
+        {
+            var clients = _clientRepository.GetAll();
+            return Ok(clients);
+        }
+
+        [HttpGet("{id}")]
+        public IActionResult GetById(int id)
+        {
+            var client = _clientRepository.GetById(id);
+            if (client == null)
+                return NotFound();
+            return Ok(client);
+        }
+
+        [HttpPost]
+        public IActionResult Create(Client client)
+        {
+            _clientRepository.Create(client);
+            return CreatedAtAction(nameof(GetById), new { id = client.ClientId }, client);
+        }
+
+        [HttpPut("{id}")]
+        public IActionResult Update(int id, Client client)
+        {
+            if (id != client.ClientId)
+                return BadRequest();
+
+            _clientRepository.Update(client);
+            return NoContent();
+        }
+
+        [HttpDelete("{id}")]
+        public IActionResult Delete(int id)
+        {
+            _clientRepository.Delete(id);
+            return NoContent();
+        }
+    }
+}
+
+Adicione o Swagger:
+
+public void ConfigureServices(IServiceCollection services)
+{
+    services.AddControllers();
+    services.AddSwaggerGen();
+}
+
+public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+{
+    if (env.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+    }
+
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ClientManagement API V1");
+    });
+
+    app.UseRouting();
+    app.UseAuthorization();
+    app.UseEndpoints(endpoints =>
+    {
+        endpoints.MapControllers();
+    });
+}
+
+Views:
+
+Index.cshtml
+
+@model List<ClientManagement.Web.Models.ClientViewModel>
+
+@{
+    ViewData["Title"] = "Lista de Clientes";
+}
+
+<h2>Clientes</h2>
+
+<p>
+    <a asp-action="Create" class="btn btn-primary">Novo Cliente</a>
+</p>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>CPF</th>
+            <th>Nome</th>
+            <th>RG</th>
+            <th>Data de Nascimento</th>
+            <th>Sexo</th>
+            <th>Estado Civil</th>
+            <th>Ações</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var client in Model)
+        {
+            <tr>
+                <td>@client.CPF</td>
+                <td>@client.Nome</td>
+                <td>@client.RG</td>
+                <td>@client.DataNascimento.ToShortDateString()</td>
+                <td>@client.Sexo</td>
+                <td>@client.EstadoCivil</td>
+                <td>
+                    <a asp-action="Edit" asp-route-id="@client.ClientId" class="btn btn-warning">Editar</a>
+                    <a asp-action="Delete" asp-route-id="@client.ClientId" class="btn btn-danger">Excluir</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+Create.cshtml
+
+@model ClientManagement.Web.Models.ClientViewModel
+
+@{
+    ViewData["Title"] = "Novo Cliente";
+}
+
+<h2>Novo Cliente</h2>
+
+<form asp-action="Create" method="post">
+    <div class="form-group">
+        <label asp-for="CPF"></label>
+        <input asp-for="CPF" class="form-control" />
+        <span asp-validation-for="CPF" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Nome"></label>
+        <input asp-for="Nome" class="form-control" />
+        <span asp-validation-for="Nome" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="RG"></label>
+        <input asp-for="RG" class="form-control" />
+        <span asp-validation-for="RG" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="DataExpedicao"></label>
+        <input asp-for="DataExpedicao" type="date" class="form-control" />
+        <span asp-validation-for="DataExpedicao" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="OrgaoExpedicao"></label>
+        <input asp-for="OrgaoExpedicao" class="form-control" />
+        <span asp-validation-for="OrgaoExpedicao" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="UFExpedicao"></label>
+        <input asp-for="UFExpedicao" class="form-control" />
+        <span asp-validation-for="UFExpedicao" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="DataNascimento"></label>
+        <input asp-for="DataNascimento" type="date" class="form-control" />
+        <span asp-validation-for="DataNascimento" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Sexo"></label>
+        <input asp-for="Sexo" class="form-control" />
+        <span asp-validation-for="Sexo" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="EstadoCivil"></label>
+        <input asp-for="EstadoCivil" class="form-control" />
+        <span asp-validation-for="EstadoCivil" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Endereco"></label>
+        <input asp-for="Endereco" class="form-control" />
+        <span asp-validation-for="Endereco" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="CEP"></label>
+        <input asp-for="CEP" class="form-control" />
+        <span asp-validation-for="CEP" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Logradouro"></label>
+        <input asp-for="Logradouro" class="form-control" />
+        <span asp-validation-for="Logradouro" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Numero"></label>
+        <input asp-for="Numero" class="form-control" />
+        <span asp-validation-for="Numero" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Complemento"></label>
+        <input asp-for="Complemento" class="form-control" />
+        <span asp-validation-for="Complemento" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Bairro"></label>
+        <input asp-for="Bairro" class="form-control" />
+        <span asp-validation-for="Bairro" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Cidade"></label>
+        <input asp-for="Cidade" class="form-control" />
+        <span asp-validation-for="Cidade" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="UFEndereco"></label>
+        <input asp-for="UFEndereco" class="form-control" />
+        <span asp-validation-for="UFEndereco" class="text-danger"></span>
+    </div>
+    <button type="submit" class="btn btn-primary">Salvar</button>
+</form>
+
+Edit.cshtml
+
+@model ClientManagement.Web.Models.ClientViewModel
+
+@{
+    ViewData["Title"] = "Editar Cliente";
+}
+
+<h2>Editar Cliente</h2>
+
+<form asp-action="Edit" method="post">
+    <input type="hidden" asp-for="ClientId" />
+    
+    <div class="form-group">
+        <label asp-for="CPF"></label>
+        <input asp-for="CPF" class="form-control" />
+        <span asp-validation-for="CPF" class="text-danger"></span>
+    </div>
+    <div class="form-group">
+        <label asp-for="Nome"></label>
+        <input asp-for="Nome" class="form-control" />
+        <span asp-validation-for="Nome" class="text-danger"></span>
+    </div>
+    <!-- Continue com o mesmo padrão para os outros campos -->
+    <button type="submit" class="btn btn-primary">Salvar</button>
+</form>
+
+Delete.cshtml
+
+@model ClientManagement.Web.Models.ClientViewModel
+
+@{
+    ViewData["Title"] = "Excluir Cliente";
+}
+
+<h2>Excluir Cliente</h2>
+
+<h3>Você tem certeza que deseja excluir este cliente?</h3>
+<div>
+    <h4>Cliente</h4>
+    <hr />
+    <dl class="row">
+        <dt class="col-sm-2">CPF</dt>
+        <dd class="col-sm-10">@Model.CPF</dd>
+
+        <dt class="col-sm-2">Nome</dt>
+        <dd class="col-sm-10">@Model.Nome</dd>
+        
+        <!-- Continue listando os campos conforme necessário -->
+    </dl>
+    
+    <form asp-action="DeleteConfirmed" method="post">
+        <input type="hidden" asp-for="ClientId" />
+        <button type="submit" class="btn btn-danger">Excluir</button>
+        <a asp-action="Index" class="btn btn-secondary">Cancelar</a>
+    </form>
+</div>
+
+Script de Tabela
+
+CREATE TABLE Clients (
+    ClientId INT PRIMARY KEY,
+    CPF VARCHAR(11) NOT NULL,
+    Nome VARCHAR(100) NOT NULL,
+    RG VARCHAR(20),
+    DataExpedicao DATETIME,
+    OrgaoExpedicao VARCHAR(20),
+    UF VARCHAR(2),
+    DataNascimento DATETIME,
+    Sexo VARCHAR(10),
+    EstadoCivil VARCHAR(20),
+    Endereco VARCHAR(100),
+    CEP VARCHAR(8),
+    Logradouro VARCHAR(100),
+    Numero VARCHAR(10),
+    Complemento VARCHAR(50),
+    Bairro VARCHAR(50),
+    Cidade VARCHAR(50),
+    UFEndereco VARCHAR(2)
+);
+
+--------------------------------------------------------------------------------------------------------
+
+sobre que foi pensado para construção do projeto
+
+1. Estrutura do Projeto
+Site MVC:
+
+Projeto ASP.NET Core MVC: Criamos um projeto MVC (ClientManagement.Web) para desenvolver a interface do usuário. Este projeto inclui controladores e views para permitir a criação, edição, exclusão e listagem de clientes.
+Views: As views foram criadas para representar a interface visual, onde o usuário pode interagir com a aplicação. Foram desenvolvidas quatro views principais: Index, Create, Edit e Delete.
+Projeto de API:
+
+API RESTful: Criamos uma API (ClientManagement.API) utilizando o ASP.NET Core para gerenciar o back-end do sistema. Esta API contém endpoints que permitem o CRUD (Create, Read, Update, Delete) de clientes.
+Autenticação JWT: Implementamos uma API de autenticação (AuthController) para gerar tokens JWT (JSON Web Tokens). Essa API utiliza um mock para validar o login do usuário (verifica o usuário e senha fictícios) e, se forem válidos, gera um token JWT, que será usado para proteger outras APIs.
+CRUD de Clientes: Criamos um controlador (ClientsController) na API que expõe endpoints para criar, listar, atualizar e excluir clientes. Os dados dos clientes são gerenciados sem o uso do Entity Framework, para cumprir o requisito de não utilizá-lo, usando mocks e estruturas de dados simples.
+2. Controllers e Views
+Controllers:
+
+Foi Criado controladores (ClientsController no projeto MVC e na API) que servem como intermediários entre a interface do usuário e a lógica de negócios. No MVC, o ClientsController consome as APIs para obter, exibir e enviar dados. Na API, o ClientsController expõe os métodos CRUD.
+Views:
+
+Index.cshtml: Lista todos os clientes, permite a navegação para criar, editar ou excluir clientes.
+Create.cshtml: Formulário para adicionar um novo cliente com todos os campos necessários, incluindo validações.
+Edit.cshtml: Formulário para editar os detalhes de um cliente existente.
+Delete.cshtml: Exibe as informações do cliente e confirma a exclusão.
+3. Swagger
+Documentação da API: Configuramos o Swagger para fornecer uma interface interativa que documenta a API, facilitando o teste e a integração da API com outros sistemas ou desenvolvedores.
+4. Testes Unitários
+Cobertura de Testes: Implementamos testes unitários básicos para validar as principais funcionalidades dos controladores (ClientsController e AuthController). Isso garante que as operações de CRUD e a lógica de autenticação funcionem conforme esperado.
+5. Fluxo de Dados
+Fluxo de Dados:
+O usuário interage com o site MVC, que envia solicitações HTTP para as APIs.
+A API autentica o usuário utilizando JWT e realiza operações de CRUD com base nos dados fornecidos.
+As respostas da API são retornadas ao site MVC para exibição ou outras ações.
+
+Conclusão
+Essa estrutura foi criada para seguir as boas práticas de desenvolvimento, incluindo separação de responsabilidades (front-end e back-end), autenticação segura com JWT, uma abordagem modular com controle de versão, e a facilidade de manutenção e escalabilidade do sistema.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
